@@ -1,0 +1,7 @@
+{
+  "name": "Cambiar Private Gym Studio",
+  "description": "Exclusieve privégym studio Cambiar: afhuur per 60 minuten met smart door PIN, professionele apparatuur, sfeervolle spiegelwand en 100% maandelijks opzegbare abonnementen.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
