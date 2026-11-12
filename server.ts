@@ -9,7 +9,7 @@ import { db, initSQLiteDatabase } from './src/db/sqlite';
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '60mb' }));
 app.use(express.urlencoded({ extended: true, limit: '60mb' }));
@@ -49,8 +49,13 @@ function formatSubscription(row: any) {
   };
 }
 
-function formatUser(row: any, subRow: any = null) {
+function formatUser(row: any, sub: any = null) {
   if (!row) return null;
+  // If sub is already a formatted object (has planId), keep it; otherwise format raw row
+  const subscription = sub && typeof sub === 'object' && 'planId' in sub
+    ? sub
+    : formatSubscription(sub);
+
   return {
     id: String(row.id),
     email: String(row.email),
@@ -58,7 +63,7 @@ function formatUser(row: any, subRow: any = null) {
     phone: row.phone ? String(row.phone) : '',
     role: String(row.role) as 'admin' | 'member' | 'trainer' | 'guest',
     memberSince: String(row.member_since),
-    subscription: formatSubscription(subRow),
+    subscription,
   };
 }
 
@@ -1067,6 +1072,16 @@ app.delete('/api/bookings/:id', async (req, res) => {
     }
 
     const bookingRow = bookingResult.rows[0];
+
+    // If already cancelled, do not refund again
+    if (bookingRow.status === 'cancelled') {
+      return res.json({
+        message: 'Reservering was al eerder geannuleerd.',
+        booking: formatBooking(bookingRow),
+        subscription: await getUserSubscriptionFromDB(String(bookingRow.user_email)),
+      });
+    }
+
     const originalSlotId = String(bookingRow.slot_id);
     const updatedSlotId = originalSlotId.startsWith('cancelled_')
       ? originalSlotId
@@ -1077,16 +1092,18 @@ app.delete('/api/bookings/:id', async (req, res) => {
       args: [cancelledAt, cancelledBy, updatedSlotId, id],
     });
 
-    const userSub = await getUserSubscriptionFromDB(String(bookingRow.user_email));
-    if (userSub && typeof userSub.remainingHoursThisMonth === 'number' && userSub.monthlyHours !== 'onbeperkt') {
-      const maxHours = typeof userSub.monthlyHours === 'number' ? userSub.monthlyHours : 8;
+    const userEmail = String(bookingRow.user_email).toLowerCase().trim();
+    const userSub = await getUserSubscriptionFromDB(userEmail);
+
+    // Only restore credit if booking was paid via membership or if a non-unlimited subscription exists
+    if (userSub && userSub.monthlyHours !== 'onbeperkt') {
       await db.execute({
-        sql: 'UPDATE subscriptions SET remaining_hours = MIN(?, remaining_hours + 1) WHERE id = ?',
-        args: [maxHours, userSub.id],
+        sql: 'UPDATE subscriptions SET remaining_hours = remaining_hours + 1 WHERE id = ?',
+        args: [userSub.id],
       });
     }
 
-    const updatedSub = await getUserSubscriptionFromDB(String(bookingRow.user_email));
+    const updatedSub = await getUserSubscriptionFromDB(userEmail);
     res.json({
       message: 'Tijdslot geannuleerd en uurtegoed teruggestort in SQLite database.',
       booking: {

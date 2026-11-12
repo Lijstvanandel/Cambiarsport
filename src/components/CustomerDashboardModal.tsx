@@ -62,9 +62,10 @@ export const CustomerDashboardModal: React.FC<CustomerDashboardModalProps> = ({
 
   const selectedDate = datesList[selectedDateIdx];
 
-  // Fetch bookings for current user
+  // Fetch bookings and refresh user subscription from database on open
   useEffect(() => {
     if (isOpen && user?.email) {
+      refreshUser();
       fetchUserBookings();
       // Generate slots for quick booking
       const generated = generateHourlySlotsForDateRange(new Date(), 7);
